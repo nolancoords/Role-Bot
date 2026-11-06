@@ -22,7 +22,7 @@ async def on_ready():
 
 @bot.event
 async def on_member_join(member):
-    role_name = "ODG Supporter"
+    role_name = "Supporter"
 
     role = discord.utils.get(
         member.guild.roles,
