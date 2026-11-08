@@ -1,0 +1,58 @@
+name: Run Role Bot
+
+# GitHub Actions jobs are capped at 6 hours, so the bot is run in overlapping
+# ~5h50m shifts. A new shift starts every 5 hours, which leaves ~50 minutes of
+# overlap so a delayed cron trigger never leaves the bot offline.
+# Overlap is harmless: assigning a role that a member already has is a no-op.
+on:
+  schedule:
+    - cron: "0 */5 * * *"
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - bot.py
+      - requirements.txt
+      - .github/workflows/bot.yml
+
+permissions:
+  contents: read
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 358
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run bot (stops itself after 5h50m)
+        env:
+          DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
+          PYTHONUNBUFFERED: "1"
+        run: |
+          # timeout exits with 124 when the time limit is reached; that is a normal handoff.
+          timeout --signal=SIGTERM 21000 python bot.py || code=$?
+          if [ "${code:-0}" -eq 124 ]; then
+            echo "Shift finished; next scheduled run takes over."
+            exit 0
+          fi
+          exit "${code:-0}"
+
+  # Scheduled workflows are auto-disabled after 60 days without repo activity.
+  # This keeps the schedule alive.
+  keepalive:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - uses: liskin/gh-workflow-keepalive@v1
